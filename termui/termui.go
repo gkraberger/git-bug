@@ -3,9 +3,12 @@ package termui
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/awesome-gocui/gocui"
 	"github.com/pkg/errors"
+
+	ps "github.com/mitchellh/go-ps"
 
 	errors2 "github.com/go-errors/errors"
 
@@ -13,6 +16,7 @@ import (
 	"github.com/MichaelMure/git-bug/entity"
 	"github.com/MichaelMure/git-bug/input"
 	"github.com/MichaelMure/git-bug/query"
+	"syscall"
 )
 
 var errTerminateMainloop = errors.New("terminate gocui mainloop")
@@ -144,6 +148,11 @@ func keybindings(g *gocui.Gui) error {
 		return err
 	}
 
+    // Stop
+	if err := g.SetKeybinding("", gocui.KeyCtrlZ, gocui.ModNone, tstp); err != nil {
+		return err
+	}
+
 	if err := ui.bugTable.keybindings(g); err != nil {
 		return err
 	}
@@ -170,6 +179,28 @@ func keybindings(g *gocui.Gui) error {
 func quit(g *gocui.Gui, v *gocui.View) error {
 	return gocui.ErrQuit
 }
+
+// Send signal stop
+func tstp(g *gocui.Gui, v *gocui.View) error {
+	pid := syscall.Getpid()
+    // Check if the name of the parent process starts with ``git``
+    // in that case we want to stop the parent process, else this process
+	p, err := ps.FindProcess(syscall.Getppid())
+	if(err == nil) {
+		if(strings.HasPrefix(p.Executable(), "git")) {
+			pid = syscall.Getppid()
+		}
+	}
+    // close the gui
+	ui.g.Close()
+	ui.g = nil
+    // stop
+	syscall.Kill(pid, syscall.SIGSTOP)
+    // restart the gui
+	initGui(nil)
+	return nil
+}
+
 
 func newBugWithEditor(repo *cache.RepoCache) error {
 	// This is somewhat hacky.
